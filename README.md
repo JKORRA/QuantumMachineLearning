@@ -1,13 +1,5 @@
 # Quantum Circuit Born Machines for Music Generation
 
-## Master's Thesis Project - Quantum Machine Learning
-
-**Author:** Jacopo  
-**University:** University of Trento  
-**Date:** January 2026
-
----
-
 ## Abstract
 
 This thesis investigates whether **Quantum Machine Learning (QML)** can generate symbolic music (MIDI) better or differently than classical methods. Specifically, we test the hypothesis that **Quantum Entanglement** is a necessary physical resource for modeling complex, non-local musical correlations.
