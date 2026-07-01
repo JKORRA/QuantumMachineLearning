@@ -1,0 +1,26 @@
+{
+  "experiment": "topology_battle",
+  "winner": "linear",
+  "results": {
+    "none": {
+      "final_loss": 0.0059627198187627295,
+      "final_fidelity": 0.09982087202712792,
+      "n_params": 48
+    },
+    "linear": {
+      "final_loss": 2.2482188588357488e-05,
+      "final_fidelity": 0.733391481794776,
+      "n_params": 48
+    },
+    "circular": {
+      "final_loss": 0.0015178567549963828,
+      "final_fidelity": 0.7065409279513923,
+      "n_params": 48
+    },
+    "full": {
+      "final_loss": 3.5480155421874215e-05,
+      "final_fidelity": 0.5987160226501107,
+      "n_params": 48
+    }
+  }
+}

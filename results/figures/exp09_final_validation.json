@@ -1,0 +1,28 @@
+{
+  "experiment": "final_validation",
+  "baseline": {
+    "type": "separable",
+    "final_loss": 0.00595843910291094,
+    "final_fidelity": 0.09977122208455419,
+    "metrics": {
+      "MMD": 0.005958439102902169,
+      "KL Divergence": 5.089208177768641,
+      "Total Variation": 0.983543978348568,
+      "Hellinger Distance": 0.9488039183083958,
+      "Fidelity": 0.09977112460263533
+    }
+  },
+  "champion": {
+    "type": "entangled",
+    "final_loss": 2.038536948079095e-05,
+    "final_fidelity": 0.6113409704307626,
+    "metrics": {
+      "MMD": 2.038536948079095e-05,
+      "KL Divergence": 1.984468010333148,
+      "Total Variation": 0.6713305953198287,
+      "Hellinger Distance": 0.6234252397595378,
+      "Fidelity": 0.6113409704307627
+    }
+  },
+  "conclusion": "Entanglement is necessary for correlated music"
+}

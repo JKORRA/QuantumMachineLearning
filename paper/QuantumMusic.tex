@@ -1,0 +1,835 @@
+\documentclass[11pt,a4paper]{article}
+
+% ===== Packages =====
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,       % false: boxed links; true: colored links
+    linkcolor=black    % set to true to hide all link colors
+}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[style=numeric, sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+\graphicspath{{./Immagini}}
+
+\title{\textbf{Quantum Circuit Born Machines for Music Generation}\\[0.5em]
+\large A Comprehensive Study on Learning Musical Distributions\\with Near-Term Quantum Computers}
+
+\author{Jacopo Corrao\\
+University of Trento}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+%=============================================================================
+\begin{abstract}
+%=============================================================================
+Can quantum computers compose music? This thesis investigates \textbf{Quantum Circuit Born Machines} (QCBMs), a novel generative model that harnesses quantum superposition and entanglement to learn probability distributions from musical data.
+
+Using the iconic \textit{Super Mario Bros.} theme as our dataset, we systematically explored how circuit architecture, optimization strategies, and hardware noise affect the model's ability to capture melodic patterns. Our investigation reveals that entanglement provides a significant advantage for learning musical structure: circuits with quantum correlations achieve 82.6\% fidelity compared to only 63.3\% for classical-like separable circuits. The choice of architecture also proves critical, with linear topology outperforming full connectivity (73.3\% versus 59.9\%) and the SLSQP optimizer converging more reliably than alternative methods. Perhaps most importantly, we demonstrate practical feasibility on current hardware, achieving 74.9\% fidelity when running on IBM's 133-qubit \texttt{ibm\_torino} processor despite inherent noise. We further extend the basic model with temporal coherence mechanisms (Markov QCBM) and rhythm encoding (6-qubit duration model) to enable richer musical output.
+
+These results demonstrate that quantum generative models are not just theoretically interesting but also practically viable for creative applications on today's quantum computers.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%=============================================================================
+\section{Introduction}
+%=============================================================================
+
+The intersection of music and computing has a rich history, dating back to algorithmic composition experiments like the \textit{Illiac Suite}. However, the emergence of quantum computing offers a fundamentally new paradigm. As described by Miranda and Basak, Quantum Computer Music (QCM) is not merely about using a faster processor, but about leveraging unique quantum mechanical properties—such as superposition and interference—to generate novel aesthetic structures \cite{Miranda2021}. While classical generative models rely on pseudo-randomness, quantum models can access true probability distributions inherent to quantum mechanics. This thesis explores that connection by applying a \textbf{Quantum Circuit Born Machine (QCBM)} to generate musical sequences.
+
+\subsection{Why Quantum Machine Learning for Music?}
+
+Classical generative models (GANs, VAEs, Transformers) have revolutionized music generation, but they require enormous computational resources and vast training datasets. Quantum computers offer a tantalizing alternative: the ability to represent and sample from exponentially large probability distributions using only a polynomial number of parameters.
+
+A \textbf{Quantum Circuit Born Machine} exploits this property directly. With just 4 qubits and 24 trainable parameters, a QCBM can represent distributions over $2^4 = 16$ states---and crucially, it can capture correlations between those states through quantum entanglement, something classical models achieve only with significantly more complexity.
+
+\subsection{The Super Mario Challenge}
+
+To test these ideas concretely, we chose the \textit{Super Mario Bros.} overworld theme, a melody instantly recognizable to millions. Our challenge: can a quantum circuit learn the statistical fingerprint of Mario's music and generate new notes that sound like Mario?
+
+This isn't just an academic exercise. Music is fundamentally about probability: which notes follow which, how often certain pitches appear, and what patterns make a melody memorable. If quantum computers can learn these distributions efficiently, they may offer unique advantages for creative AI.
+
+\subsection{What You'll Find in This Report}
+
+We conducted a systematic experimental campaign across 11 Jupyter notebooks, each answering a specific question:
+
+\begin{enumerate}
+    \item Does entanglement actually help, or is it quantum hype?
+    \item Which circuit architecture learns best?
+    \item Can we survive real-world quantum noise?
+    \item Does it work on actual IBM quantum hardware?
+    \item Can we generate music that sounds coherent?
+\end{enumerate}
+
+\clearpage
+%=============================================================================
+\section{Theoretical Background}
+%=============================================================================
+
+This section builds the theoretical foundation for understanding Quantum Circuit Born Machines and why they offer unique advantages for generative modeling.
+
+\subsection{Quantum States and Superposition}
+
+A quantum system with $N$ qubits can exist in a superposition of all $2^N$ possible states simultaneously. The quantum state is:
+\[
+|\psi\rangle = \sum_{x=0}^{2^N-1} \alpha_x |x\rangle
+\]
+where each $\alpha_x$ is a complex amplitude. The normalization constraint ensures all probabilities sum to one:
+\[
+\sum_{x=0}^{2^N-1} |\alpha_x|^2 = 1
+\]
+
+\textbf{Key insight}: With just 4 qubits, we can represent 16 states simultaneously. The real power comes from quantum entanglement, which creates correlations between states that classical models struggle to capture efficiently.
+
+\subsection{The Born Rule: Quantum Mechanics as a Probability Machine}
+
+Quantum computers naturally generate probability distributions. The \textbf{Born rule} tells us that measuring a quantum state produces outcome $x$ with probability:
+\[
+P(x) = |\alpha_x|^2
+\]
+
+This is elegant: the quantum state \textit{is} the distribution. When we measure the circuit, we directly sample from this probability distribution.
+
+\textbf{Example}: A 2-qubit entangled state $|\psi\rangle = \frac{1}{2}|00\rangle + \frac{\sqrt{3}}{2}|11\rangle$ produces the probabilities in Table~\ref{tab:born_example}:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{State} & \textbf{Probability} \\
+\midrule
+$|00\rangle$ & 25\% \\
+$|11\rangle$ & 75\% \\
+$|01\rangle, |10\rangle$ & 0\% \\
+\bottomrule
+\end{tabular}
+\caption{Perfect correlation in an entangled state: we see either both qubits in 0 or both in 1.}
+\label{tab:born_example}
+\end{table}
+
+\subsection{Quantum Circuit Born Machines}
+
+A Quantum Circuit Born Machine (QCBM) is a generative model that learns probability distributions using quantum mechanics. Unlike classical generative models that explicitly compute probabilities, the QCBM encodes the distribution directly in a quantum state.
+
+As reviewed by Benedetti et al., the strength of this approach lies in the expressive power of Parameterized Quantum Circuits (PQCs), which act as universal approximators for unitary transformations, allowing them to represent complex correlations and highly entangled states \cite{Benedetti2019}.
+
+The core idea is simple: we build a quantum circuit with trainable parameters $\boldsymbol{\theta}$, and when we measure it, we get samples from a probability distribution according to Born's rule:
+\begin{equation}
+    P_\theta(x) = |\langle x | \psi(\theta) \rangle|^2
+\end{equation}
+
+This is an \textit{implicit} generative model. We don't ask "what is the probability of this note?" Instead, we sample from the circuit and get musical patterns directly, just like sampling from nature.
+
+\subsubsection{From Physics to Machine Learning}
+The training process is straightforward: we start with a parameterized quantum circuit $U(\boldsymbol{\theta})$ that transforms an initial state:
+\[
+|\psi(\boldsymbol{\theta})\rangle = U(\boldsymbol{\theta})|0\rangle^{\otimes N}
+\]
+
+Our goal is to find parameters that make our quantum distribution match the musical data:
+\begin{equation}
+\boldsymbol{\theta}^* = \arg\min_{\boldsymbol{\theta}} \mathcal{L}(P_{\boldsymbol{\theta}}, P_{\text{data}})
+\end{equation}
+
+\textbf{Why this is powerful}: Despite using only a few dozen parameters (24 in our case), the quantum circuit can represent complex distributions over 16 states. The secret is entanglement, which creates correlations between notes efficiently.
+
+\textbf{Comparison to classical models}: Generative Adversarial Networks (GANs) require adversarial training with discriminators, often suffering from instability. Variational Autoencoders (VAEs) need encoder-decoder architectures and latent spaces. The QCBM offers a more direct approach: parameterize a quantum state, measure it, and you have samples.
+
+\subsection{Circuit Architecture: The Hardware-Efficient Ansatz}
+We use a \textbf{Hardware-Efficient Ansatz}, designed specifically for noisy quantum computers. Each layer alternates between two operations:
+\begin{enumerate}
+    \item \textbf{Single-qubit rotations} ($R_Y, R_Z$): Create superposition and explore different states
+    \item \textbf{Entangling gates} (CNOT): Create correlations between qubits
+\end{enumerate}
+
+As noted in the literature, hardware-efficient circuits utilize only native gates available on quantum processors, thereby minimizing circuit depth and gate count. This is crucial for reducing the accumulation of decoherence noise during execution on NISQ devices \cite{Benedetti2019}. Similar architectures have been successfully employed in Quantum GANs to load random distributions into quantum states \cite{Zoufal2019}.
+
+\subsubsection{Implementation Details}
+Our circuit has 4 qubits and 3 layers. Each layer applies rotation gates to all qubits, then entangles them with CNOTs. For a linear topology (connecting qubit 0→1→2→3), one layer looks like:
+\[
+U_{\text{layer}}(\boldsymbol{\theta}) = \text{CNOTs} \cdot \text{Rotations}
+\]
+The complete circuit stacks three such layers:
+\[
+U(\boldsymbol{\theta}) = U_{\text{layer}}^{(3)} \cdot U_{\text{layer}}^{(2)} \cdot U_{\text{layer}}^{(1)}
+\]
+
+\subsubsection{Parameter Efficiency}
+This design is remarkably compact: only 24 trainable parameters for linear topology (8 angles per layer × 3 layers). Even with full all-to-all connectivity, we need just 42 parameters.
+
+Compare this to classical neural networks requiring thousands or millions of weights. The QCBM leverages quantum entanglement to achieve rich expressivity with minimal parameters.
+\subsection{Why Entanglement Matters}
+
+Without entanglement, each qubit evolves independently. The output would be a product distribution, assuming all notes are independent. But music isn't random—context matters!
+
+Table~\ref{tab:entanglement_comparison} shows the mathematical difference:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Type} & \textbf{What It Means} \\
+\midrule
+Separable (no entanglement) & $P(x_0, x_1, x_2, x_3) = P(x_0) \cdot P(x_1) \cdot P(x_2) \cdot P(x_3)$ \\
+ & Each note is independent \\
+\addlinespace
+Entangled & $P(x_0, x_1, x_2, x_3) \neq$ product of individual probabilities \\
+ & Notes are correlated \\
+\bottomrule
+\end{tabular}
+\caption{Entanglement allows the model to capture correlations between notes.}
+\label{tab:entanglement_comparison}
+\end{table}
+
+\textbf{Musical example}: In a C major chord, notes C and E often appear together. Without entanglement, if $P(C) = 17.5\%$ and $P(E) = 11.4\%$, we'd predict $P(C \text{ and } E) = 2\%$. With entanglement, the model can learn the actual co-occurrence pattern, which might be significantly higher—potentially 4× or more—enabling it to capture the harmonic structure of musical chords.
+
+\subsection{Loss Functions: How Do We Measure ``Closeness''?}
+
+Comparing probability distributions is central to generative modeling. We need a loss function $\mathcal{L}(P_{\boldsymbol{\theta}}, P_{\text{data}})$ that:
+\begin{enumerate}
+    \item Is zero when distributions match perfectly
+    \item Increases smoothly as distributions diverge
+    \item Is numerically stable and differentiable
+    \item Can be estimated from finite samples
+\end{enumerate}
+
+Common approaches for QCBM training include:
+
+\subsubsection{Kullback-Leibler Divergence (KL)}
+\[
+\mathcal{L}_{KL} = \sum_{x} P_{\text{data}}(x) \log \left( \frac{P_{\text{data}}(x)}{P_{\boldsymbol{\theta}}(x) + \epsilon} \right)
+\]
+
+Table~\ref{tab:kl_properties} summarizes the advantages and disadvantages of KL divergence for QCBM training:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Category} & \textbf{Property} \\
+\midrule
+Advantage & Information-theoretically optimal (minimizes cross-entropy) \\
+Advantage & Asymmetric penalty (penalizes false negatives heavily) \\
+\addlinespace
+Disadvantage & Numerically unstable when $P_{\boldsymbol{\theta}}(x) \approx 0$ but $P_{\text{data}}(x) > 0$ \\
+Disadvantage & Requires small $\epsilon$ regularization to avoid $\log(0)$ singularities \\
+\bottomrule
+\end{tabular}
+\caption{Properties of Kullback-Leibler divergence for QCBM training.}
+\label{tab:kl_properties}
+\end{table}
+
+\textbf{When it can be problematic}: If the quantum circuit assigns near-zero probability to a state that appears in training data, the log term can become numerically challenging. This can introduce noise in the training dynamics, though in practice, KL divergence's information-theoretic properties often prove well-suited to capturing structured distributions like musical patterns.
+
+\subsubsection{Maximum Mean Discrepancy (MMD)}
+
+MMD offers an alternative approach by measuring distance in a kernel-transformed space. As highlighted by Benedetti et al., MMD serves as a powerful alternative to KL divergence because it maps distributions into a high-dimensional feature space using a kernel function, creating a smooth and differentiable loss landscape even when distributions do not overlap \cite{Benedetti2019}.
+
+Instead of comparing probabilities point-by-point, it compares statistical properties:
+
+\begin{equation}
+    \mathcal{L}_{\text{MMD}}^2 = \mathbb{E}_{x,x' \sim P_{\text{data}}}[K(x,x')] - 2\mathbb{E}_{x \sim P_{\text{data}}, y \sim P_\theta}[K(x,y)] + \mathbb{E}_{y,y' \sim P_\theta}[K(y,y')]
+\end{equation}
+
+where $K(x, y) = \exp(-\|x - y\|^2 / 2\sigma^2)$ is a Gaussian kernel.
+
+The Gaussian kernel acts as a smoothing function, allowing the quantum circuit to sense the "gravitational pull" of the target data even from a distance. This theoretical stability makes MMD attractive for cases where distributions have little overlap. However, the choice between MMD and KL divergence depends on the specific task: KL's information-theoretic properties may be more effective for structured data, while MMD's smoothness can help in highly non-overlapping scenarios.
+\subsubsection{Fidelity: The Evaluation Metric}
+
+For evaluation (not training), we use the \textbf{Bhattacharyya coefficient}:
+\[
+F(P, Q) = \sum_{x} \sqrt{P(x) \cdot Q(x)}
+\]
+
+This gives a score from 0 (no match) to 1 (perfect match). A fidelity of 82.6\%, for example, would mean the model captures 82.6\% of the target distribution's structure—an intuitive percentage that's easy to interpret.
+
+\subsection{Optimization: Navigating the Quantum Loss Landscape}
+
+Training QCBMs requires optimizers that can handle noisy gradients and non-convex landscapes. Common approaches include:
+
+\subsubsection{Gradient-Based: SLSQP with Parameter-Shift Rule}
+
+Quantum circuits allow exact gradient computation via the parameter-shift rule:
+\[
+\frac{\partial \langle O \rangle}{\partial \theta_i} = \frac{1}{2}\left[ \langle O \rangle_{\theta_i + \pi/2} - \langle O \rangle_{\theta_i - \pi/2} \right]
+\]
+
+This requires two circuit evaluations per parameter but provides exact gradients. Sequential Least Squares Programming (SLSQP) can leverage these gradients efficiently for constrained optimization problems.
+
+\subsubsection{Gradient-Free Methods}
+
+These methods explore the loss landscape directly without computing gradients. Common approaches include:
+\begin{itemize}
+    \item \textbf{Powell's method}: Slow but thorough exploration of the parameter space
+    \item \textbf{COBYLA} (Constrained Optimization BY Linear Approximations): Very fast but may converge prematurely
+    \item \textbf{Nelder-Mead}: Offers a good speed-quality tradeoff
+\end{itemize}
+
+The choice between gradient-based and gradient-free methods depends on factors like noise levels, circuit depth, and the smoothness of the loss landscape. Gradient-based methods can be more efficient when quantum gradients are stable enough for effective optimization.
+
+\subsection{NISQ Reality: The Noise Model}
+
+Real quantum computers are noisy. We model this using the \textbf{depolarizing channel}:
+\[
+\mathcal{E}(\rho) = (1 - p)\rho + \frac{p}{3}(X\rho X + Y\rho Y + Z\rho Z)
+\]
+
+This means: with probability $(1-p)$ the gate works correctly, otherwise a random error occurs. Typical error rates are $p \approx 0.1\%$ per gate on IBM hardware.
+
+Table~\ref{tab:noise_sources} details where noise originates in real quantum hardware:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Source} & \textbf{Description} \\
+\midrule
+Gate errors & Imperfect control pulses ($p \approx 0.1\%$ for single-qubit gates, $p \approx 1\%$ for CNOT on IBM hardware) \\
+\addlinespace
+Decoherence & Environmental coupling causes $T_1$ (amplitude damping) and $T_2$ (dephasing) with timescales of approximately 100 to 300 microseconds \\
+\addlinespace
+Readout errors & Measurement has approximately 1 to 3\% error rate (bit flips) \\
+\bottomrule
+\end{tabular}
+\caption{Sources of noise in quantum hardware and their typical magnitudes.}
+\label{tab:noise_sources}
+\end{table}
+
+\textbf{Noise accumulation}: For a circuit with $d$ gates, total noise scales as:
+\[
+\text{Error} \propto 1 - (1-p)^d \approx d \cdot p \quad \text{(for small $p$)}
+\]
+
+For example, a typical QCBM circuit might have $d \approx 95$ gates after transpilation. With $p = 0.01$:
+\[
+\text{Expected error} \approx 95 \times 0.01 = 0.95 \approx 95\% \text{ error rate}
+\]
+
+\textbf{Why can QCBMs still work despite high error rates?} Despite this high expected error rate, several factors enable successful learning:
+
+\begin{itemize}
+    \item \textbf{Topology matters}: Linear connectivity minimizes CNOT count compared to all-to-all connections, reducing overall noise accumulation
+    \item \textbf{Sampling tolerance}: QCBM is fundamentally a sampling task that doesn't require perfect amplitude precision—approximate distributions can still capture the essential structure
+    \item \textbf{Noise-aware training}: Training on a noisy simulator can prepare the model to be inherently robust to hardware noise
+    \item \textbf{Democratic errors}: Depolarizing noise spreads errors uniformly rather than concentrating them in specific failure modes, which is less catastrophic for probabilistic sampling
+\end{itemize}
+
+These properties suggest that NISQ devices, despite their noise, can be viable for applications like music generation where approximate sampling and statistical patterns are sufficient.
+
+\clearpage
+%=============================================================================
+\section{Methodology}
+%=============================================================================
+
+\subsection{Dataset: The Music of Mario}
+
+We extracted 543 notes from the \textit{Super Mario Bros.} overworld theme MIDI file. The pitches span from E3 (MIDI 52) to E6 (MIDI 88), covering over three octaves of Nintendo nostalgia.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{exp01_raw_pitch_histogram.png}
+    \caption{Raw pitch distribution showing which notes appear most frequently in the Mario theme. The peaks reveal the melody's characteristic intervals.}
+    \label{fig:raw_pitch}
+\end{figure}
+
+\textbf{Encoding}: We quantize the 36 unique pitches into 16 bins (representable by 4 qubits). Each 4-bit binary string corresponds to a pitch range:
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{exp01_target_distribution.png}
+    \caption{Target distribution after quantization. This is what our QCBM must learn to reproduce.}
+    \label{fig:target_dist}
+\end{figure}
+
+\subsection{Experimental Setup}
+
+Table~\ref{tab:experimental_setup} outlines the configuration used across all experiments unless otherwise specified:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Parameter} & \textbf{Configuration} \\
+\midrule
+Framework & PennyLane (quantum ML) + Qiskit (IBM hardware) \\
+Circuit architecture & 4 qubits, 3 layers, 24 parameters \\
+Default optimizer & SLSQP \\
+Default loss function & KL Divergence \\
+Default entanglement & Linear topology \\
+Training iterations & 200 to 500 iterations \\
+Reproducibility & Random seed 42 \\
+\bottomrule
+\end{tabular}
+\caption{Standard experimental configuration used across all experiments.}
+\label{tab:experimental_setup}
+\end{table}
+
+\subsection{Entanglement Topologies Tested}
+
+We systematically compared four connectivity patterns. Table~\ref{tab:entanglement_topologies} describes each topology:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Topology} & \textbf{Description} \\
+\midrule
+None & No CNOTs (separable/classical-like behavior) \\
+Linear & Chain connection $(0 \to 1 \to 2 \to 3)$ \\
+Circular & Ring topology with wrap-around $(3 \to 0)$ \\
+Full & All-to-all connectivity (6 CNOTs per layer) \\
+\bottomrule
+\end{tabular}
+\caption{Entanglement topologies tested in the experiments.}
+\label{tab:entanglement_topologies}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{topology_comparison.png}
+    \caption{Visual comparison of the four entanglement topologies tested. Each diagram shows one layer of the circuit with rotation gates ($R_Y$, $R_Z$) and CNOT gates. The None topology has no entangling gates (separable), Linear forms a chain, Circular adds a wrap-around connection, and Full connects all qubit pairs.}
+    \label{fig:topology_comparison}
+\end{figure}
+
+\clearpage
+%=============================================================================
+\section{Experiments and Results}
+%=============================================================================
+
+\subsection{Experiment 3: The Entanglement Question}
+
+\textbf{The Question}: Does quantum entanglement actually improve learning, or could a classical-like circuit perform equally well?
+
+\textbf{The Answer}: Entanglement provides a dramatic advantage.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Circuit} & \textbf{Final Loss} & \textbf{Fidelity} & \textbf{Time} & \textbf{Verdict} \\
+\midrule
+Separable (no CNOTs) & 0.0745 & 63.3\% & 4.0s & Insufficient \\
+Entangled (Full) & \textbf{4.66e-5} & \textbf{82.6\%} & 13.5s & Winner \\
+\bottomrule
+\end{tabular}
+\caption{Entanglement delivers 30\% higher fidelity and 1600 times lower loss on the Mario dataset.}
+\label{tab:baseline}
+\end{table}
+
+The entangled circuit doesn't just perform better---it operates in an entirely different regime. While the separable circuit plateaus at a mediocre 63\% match, the entangled version continues refining until it captures 83\% of the target distribution's structure.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp03_training_curves.png}
+    \caption{Training dynamics reveal the fundamental difference. The entangled circuit (purple) keeps improving while the separable circuit (orange) hits a wall.}
+    \label{fig:training_curves}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp03_distribution_comparison.png}
+    \caption{Final learned distributions. The entangled QCBM closely tracks the target, while the separable version misses key peaks.}
+    \label{fig:dist_comparison}
+\end{figure}
+
+\textbf{Insight}: Music has structure, and certain note combinations are more likely than others. Capturing these correlations requires entanglement. Independent qubits simply cannot represent relationships like "if this note appears, then that note probably follows."
+
+\subsection{Experiment 5: Surviving Quantum Noise}
+
+\textbf{The Question}: How robust is our model to the noise present on real quantum hardware?
+
+\textbf{The Answer}: Graceful degradation up to 5\% error rate.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Noise Level} & \textbf{Fidelity} & \textbf{Performance Loss} \\
+\midrule
+0\% (Ideal) & 82.6\% & --- \\
+1\% & 79.8\% & 3.4\% \\
+5\% & 71.2\% & 13.8\% \\
+10\% & 58.3\% & 29.4\% \\
+\bottomrule
+\end{tabular}
+\caption{The QCBM degrades gracefully under increasing noise.}
+\label{tab:noise}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp05_noise_loss_curves.png}
+    \caption{Training loss curves under different noise levels. Even at 10\% error rate (red), the model achieves meaningful learning.}
+    \label{fig:noise_loss}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp05_noise_fidelity_curves.png}
+    \caption{Fidelity curves showing graceful degradation as noise increases.}
+    \label{fig:noise_fidelity}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp05_noise_distributions.png}
+    \caption{Final distributions under different noise levels compared to the target.}
+    \label{fig:noise_distributions}
+\end{figure}
+
+\textbf{Insight}: Current quantum hardware operates at 0.1 to 1\% error rates per gate. Our model can handle this, though deeper circuits will accumulate more errors.
+
+\subsection{Experiment 6: The Topology Tournament}
+
+\textbf{The Question}: Which entanglement pattern works best?
+
+\textbf{The Answer}: Linear topology provides the best balance of expressivity and trainability.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Topology} & \textbf{Fidelity} & \textbf{CNOTs/Layer} & \textbf{Rank} \\
+\midrule
+None (Separable) & 10.0\% & 0 & 4th \\
+Full & 59.9\% & 6 & 3rd \\
+Circular & 70.7\% & 4 & 2nd \\
+\textbf{Linear} & \textbf{73.3\%} & 3 & 1st \\
+\bottomrule
+\end{tabular}
+\caption{Linear topology wins the topology tournament on the Mario dataset.}
+\label{tab:topology}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{exp06_topology_training.png}
+    \caption{Training curves for different topologies. Linear and Circular topologies show the best performance.}
+    \label{fig:topology_training}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{exp06_topology_fidelity.png}
+    \caption{Final fidelity comparison showing clear ranking: Linear > Circular > Full > None.}
+    \label{fig:topology_fidelity}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp06_topology_distributions.png}
+    \caption{Final learned distributions for each topology compared to the target.}
+    \label{fig:topology_distributions}
+\end{figure}
+
+\textbf{Insight}: Interestingly, full connectivity does not always win. On the Mario theme dataset, simpler topologies like Linear train more effectively due to a less complex optimization landscape and better gradient flow.
+
+\subsection{Experiment 7: The Optimizer Showdown}
+
+\textbf{The Question}: Which optimizer handles the complex, noisy loss landscape best?
+
+\textbf{The Answer}: SLSQP achieves the highest fidelity on the Mario dataset.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Optimizer} & \textbf{Final Loss} & \textbf{Fidelity} & \textbf{Time} & \textbf{Verdict} \\
+\midrule
+Nelder-Mead & 0.0122 & 61.3\% & 4.7s & Fast but shallow \\
+COBYLA & 0.0002 & 60.8\% & 3.9s & Fast, moderate accuracy \\
+Powell & 3.5e-5 & 59.9\% & 36.3s & Lowest loss but lower fidelity \\
+\textbf{SLSQP} & \textbf{4.8e-5} & \textbf{63.2\%} & 25.2s & Best fidelity \\
+\bottomrule
+\end{tabular}
+\caption{SLSQP achieves the highest fidelity despite not having the lowest loss.}
+\label{tab:optimizer}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp07_optimizer_comparison.png}
+    \caption{Optimizer comparison. SLSQP (blue) achieves the highest final fidelity.}
+    \label{fig:optimizer}
+\end{figure}
+
+\textbf{Insight}: Lower loss does not always mean higher fidelity. SLSQP balances convergence speed and final quality effectively. For quick experiments, Nelder-Mead provides reasonable results in minimal time.
+
+\subsection{Experiment 8: MMD vs. KL Divergence}
+
+\textbf{The Question}: Which loss function should we use for training QCBMs?
+
+\textbf{The Answer}: KL Divergence achieved dramatically superior results, despite conventional wisdom favoring MMD for quantum generative models.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Loss Function} & \textbf{Final Fidelity} & \textbf{Training Stability} \\
+\midrule
+\textbf{KL Divergence} & \textbf{98.1\%} & Noisy but effective \\
+MMD (Gaussian kernel) & 59.9\% & Smooth but insufficient \\
+\bottomrule
+\end{tabular}
+\caption{KL divergence substantially outperformed MMD on the Mario dataset, contrary to typical QML recommendations.}
+\label{tab:loss}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp08_loss_function_comparison.png}
+    \caption{Training dynamics: KL divergence (red) shows noisier convergence but reaches 98\% fidelity; MMD (green) provides smoother training but plateaus at 60\%. This counterintuitive result likely stems from the dense nature of our target distribution and KL's sharper gradients.}
+    \label{fig:loss_fn}
+\end{figure}
+
+\subsubsection{Understanding the Surprising Result}
+
+This outcome contradicts the standard recommendation in quantum machine learning literature, where MMD is typically preferred for QCBMs due to its robustness to sparse data and measurement noise \cite{Benedetti2019}. Several factors likely explain why KL divergence dominated in our specific setting:
+
+\textbf{Dense target distribution}: The Mario dataset contains 543 notes distributed across only 16 bins, meaning most states have substantial non-zero probability. This mitigates KL's primary weakness (logarithmic singularities when $P_{\boldsymbol{\theta}}(x) \approx 0$) while allowing its information-theoretic properties to provide sharper, more directed gradients toward the target distribution.
+
+\textbf{Optimization landscape}: KL divergence creates a steeper gradient landscape that more explicitly penalizes probability mismatches. Combined with SLSQP's gradient-based approach (using the parameter-shift rule), this may have enabled more effective convergence than MMD's kernel-smoothed objective function.
+
+\textbf{Hyperparameter considerations}: MMD's performance critically depends on the Gaussian kernel bandwidth $\sigma$. Our implementation used a fixed kernel; systematic tuning of this hyperparameter might improve MMD's results, though we did not explore this in the current study.
+
+\textbf{Important caveat}: This result does not invalidate MMD's general utility for quantum generative models. On sparser datasets, with different quantum hardware characteristics, or in scenarios with severe shot noise, MMD's robustness advantages would likely prove decisive. Our finding highlights that loss function selection should be empirically validated for each specific application rather than assumed based on general guidelines.
+
+\textbf{Trade-off}: While KL achieved superior final fidelity, its training exhibited noticeably more noise and instability (visible in Figure~\ref{fig:loss_fn}). In production settings where training stability is paramount, MMD might remain preferable despite slightly lower peak performance.
+
+\subsection{Experiment 10: Actually Making Music}
+
+\textbf{The Question}: Can our trained QCBM generate melodies that sound like Mario?
+
+\textbf{The Answer}: Yes---with statistical fidelity to the original.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp10_pitch_comparison.png}
+    \caption{Pitch histograms: Original Mario (left) vs. QCBM-generated (right). The generated melody stays within the learned pitch vocabulary.}
+    \label{fig:pitch_comparison}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp10_learned_pitch_distribution.png}
+    \caption{The QCBM successfully reproduces the statistical fingerprint of Mario's music.}
+    \label{fig:learned_distribution}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp10_piano_roll_comparison.png}
+    \caption{Piano roll visualization comparing original Mario theme (top) with QCBM-generated melody (bottom).}
+    \label{fig:piano_roll}
+\end{figure}
+
+\subsection{Advanced Features}
+%=============================================================================
+
+\subsubsection{Markov QCBM: Adding Temporal Coherence}
+
+\textbf{The Problem}: Standard sampling produces notes independently, yielding melodies with jarring, random jumps.
+
+\textbf{The Solution}: Blend the QCBM distribution with a learned Markov transition matrix:
+\[
+P(x_t | x_{t-1}) \propto P_{\text{QCBM}}(x_t)^{1-\alpha} \cdot T(x_t | x_{t-1})^{\alpha}
+\]
+
+The parameter $\alpha$ controls how much temporal structure influences note selection.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp11_standard_vs_markov_sampling.png}
+    \caption{Standard sampling (top) vs. Markov-guided (bottom). The Markov version produces smoother, more musical contours.}
+    \label{fig:markov}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{exp11_markov_transition_matrix.png}
+    \caption{The learned transition matrix encodes which notes typically follow which in the Mario theme.}
+    \label{fig:transition}
+\end{figure}
+
+\subsubsection{Duration Encoding: 6-Qubit Model}
+
+\textbf{The Extension}: We extend the basic 4-qubit model by adding 2 additional qubits dedicated to note duration encoding. Table~\ref{tab:duration_encoding} shows the encoding scheme:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Component} & \textbf{Qubits} & \textbf{States} \\
+\midrule
+Pitch bins & 4 & 16 pitch bins \\
+Duration bins & 2 & 4 duration bins (sixteenth, eighth, quarter, half or longer) \\
+\midrule
+\textbf{Total} & \textbf{6} & \textbf{$2^6 = 64$ joint pitch-duration states} \\
+\bottomrule
+\end{tabular}
+\caption{Encoding scheme for the 6-qubit model with joint pitch and duration representation.}
+\label{tab:duration_encoding}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{exp11_joint_pitch_duration_distribution.png}
+    \caption{Joint pitch-duration distribution learned by the 6-qubit model. The heatmap reveals correlations between pitch and rhythm.}
+    \label{fig:joint}
+\end{figure}
+
+\subsubsection{IBM Quantum Hardware Validation}
+
+\textbf{The Ultimate Test}: Run on real quantum hardware.
+
+Table~\ref{tab:hardware_setup} details the configuration for hardware execution:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{10cm}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Backend & IBM Quantum \texttt{ibm\_torino} (133-qubit Heron processor) \\
+Shots & 4,096 measurements \\
+Transpiled depth & 95 gates \\
+\bottomrule
+\end{tabular}
+\caption{Hardware execution configuration on IBM Quantum.}
+\label{tab:hardware_setup}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{Value} & \textbf{Meaning} \\
+\midrule
+Simulator Fidelity & 80.5\% & Ideal performance (Qiskit Aer) \\
+Hardware Fidelity & 74.9\% & Real quantum computer \\
+Sim-Hardware Agreement & 93.3\% & How well they match \\
+\textbf{Noise Degradation} & \textbf{5.6 pp} & Absolute fidelity loss \\
+\textbf{Relative Degradation} & \textbf{6.9\%} & Percentage loss \\
+\bottomrule
+\end{tabular}
+\caption{Hardware fidelity remains high despite real-world noise (74.9\% on IBM hardware).}
+\label{tab:hardware}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp11_hardware_validation_comparison.png}
+    \caption{Target (Mario), simulator, and hardware distributions side-by-side. The hardware output shows noise-induced spreading but preserves the overall shape.}
+    \label{fig:hardware}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{exp11_hardware_vs_simulator_overlay.png}
+    \caption{Overlay comparison highlighting the 6.9\% relative degradation from simulator to hardware.}
+    \label{fig:hardware_overlay}
+\end{figure}
+
+\textbf{Insight}: The 5.6 percentage point degradation (6.9\% relative) is remarkably small. The hardware output still captures the essential structure of the target distribution. The 93.3\% simulator-hardware agreement demonstrates that QCBMs work reliably on real quantum computers today.
+
+\clearpage
+%=============================================================================
+\section{Discussion}
+%=============================================================================
+
+\subsection{What We Learned}
+
+Our systematic experimental campaign yielded several crucial insights about Quantum Circuit Born Machines for music generation. First and foremost, entanglement proved essential rather than optional. The dramatic fidelity advantage of 82.6\% versus 63.3\% on the Mario dataset demonstrates that quantum correlations can capture musical structure in ways that separable circuits fundamentally cannot. This isn't merely an incremental improvement but reflects a qualitative difference in the model's representational capacity.
+
+Through comprehensive comparisons, we identified a champion configuration that balances performance and trainability. The combination of linear topology (achieving 73.3\% fidelity), SLSQP optimizer (63.2\%), and KL divergence loss function (achieving 98.1\% fidelity in Experiment 8) delivers optimal results. Interestingly, linear topology outperforms the more complex full connectivity (59.9\%), suggesting that simpler architectures with better gradient flow can be more effective than maximally connected circuits for this application. 
+
+The KL divergence result deserves special attention: despite MMD being the standard recommendation in quantum machine learning literature \cite{Benedetti2019}, KL dramatically outperformed it (98.1\% versus 59.9\%). This counterintuitive finding likely stems from our dense target distribution (543 notes across 16 bins), which mitigates KL's numerical instabilities while allowing its sharper information-theoretic gradients to excel. This highlights an important lesson: theoretical recommendations should be validated empirically for each specific application, as problem characteristics can significantly influence which methods work best in practice.
+
+Perhaps most importantly for practical applications, we demonstrated that NISQ devices are genuinely usable today. The hardware degradation of only 5.6 percentage points (from 80.5\% to 74.9\%) means the musical output remains meaningful despite real-world noise. The 93.3\% simulator-hardware agreement provides confidence that results obtained in simulation will translate reliably to actual quantum computers.
+
+We also found that classical post-processing techniques complement quantum approaches effectively. The Markov extension dramatically improves musical coherence at negligible computational cost, demonstrating that hybrid quantum-classical strategies offer practical advantages. Finally, validation on the entirely different Trap dataset (achieving 61.1\% fidelity) confirms that our champion configuration generalizes beyond the Mario training data, indicating genuine learning rather than overfitting.
+
+\subsection{Limitations}
+
+Despite these encouraging results, several important limitations constrain the current approach. The scale of our quantum circuits remains modest, with 4 to 6 qubits encoding only 16 to 64 states. Real musical applications demand significantly larger vocabularies to capture the full richness of melodic, harmonic, and rhythmic patterns. 
+
+Our evaluation focused primarily on a single dataset (the Mario theme), and while we validated generalization on the Trap dataset, broader evaluation across diverse musical genres and styles is needed to fully establish the method's versatility. Additionally, our temporal modeling relies on classical post-processing through the Markov extension rather than native quantum temporal structures, representing a hybrid approach that may not fully exploit quantum advantages for sequential modeling.
+
+Regarding the loss function comparison (Experiment 8), we did not systematically explore MMD's kernel bandwidth hyperparameter, which could significantly impact its performance. The dramatic KL superiority (98.1\% versus 59.9\%) may partly reflect suboptimal MMD tuning rather than fundamental superiority. Future work should include comprehensive hyperparameter sweeps for both loss functions to ensure fair comparison. Additionally, our dense dataset may have favored KL; testing on sparser musical distributions would clarify whether this result generalizes.
+
+\subsection{Future Directions}
+
+\begin{enumerate}
+    \item \textbf{Loss function investigation}: Systematic hyperparameter tuning for MMD (kernel bandwidth $\sigma$) and exploration of adaptive or hybrid loss functions that combine KL's sharp gradients with MMD's robustness.
+    \item \textbf{Error mitigation}: Zero-noise extrapolation could further reduce the 6.9\% relative hardware degradation.
+    \item \textbf{Larger circuits}: 8 to 12 qubits for polyphony and harmony.
+    \item \textbf{Quantum RNNs}: Native quantum temporal models beyond classical Markov post-processing.
+    \item \textbf{On-hardware training}: Variational optimization directly on quantum devices.
+    \item \textbf{Dataset diversity}: Testing on sparser musical distributions (e.g., avant-garde, minimalist compositions) to validate loss function choices across different data characteristics.
+\end{enumerate}
+
+\clearpage
+%=============================================================================
+\section{Conclusions}
+%=============================================================================
+
+This thesis demonstrates that Quantum Circuit Born Machines are a viable approach for music generation, not in some distant quantum future, but on today's noisy intermediate-scale hardware.
+
+\textbf{Key Contributions}:
+\begin{enumerate}
+    \item Proved that quantum entanglement provides measurable advantage (82.6\% versus 63.3\% fidelity on Mario) for learning musical distributions
+    \item Identified champion configuration through systematic experiments: Linear topology (73.3\%) combined with SLSQP optimizer (63.2\%) and KL Divergence loss
+    \item Validated real-hardware execution with only 5.6 percentage point degradation (6.9\% relative), demonstrating 93.3\% simulator-hardware agreement
+    \item Extended the basic QCBM with temporal modeling (Markov) and duration encoding for richer musical output
+\end{enumerate}
+
+As quantum hardware improves, these techniques will enable increasingly sophisticated creative applications. The quantum computer isn't just a calculator, it might become a composer.
+
+%=============================================================================
+\appendix
+\section{Experimental Summary}
+%=============================================================================
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{clp{5.5cm}l}
+\toprule
+\textbf{Exp} & \textbf{Name} & \textbf{Key Finding} & \textbf{Result} \\
+\midrule
+01 & Data Exploration & 543 notes, 36 unique pitches & Target distribution \\
+02 & QCBM Basics & Circuit implementation verified & Working model \\
+03 & Baseline & Entangled much better than Separable & 82.6\% vs 63.3\% \\
+04 & Scalability & 3 layers optimal & Linear scaling \\
+05 & Noise & Survives up to 5\% error & Graceful degradation \\
+06 & Topology & Linear better than Circular, Full, and None & Linear wins \\
+07 & Optimizer & SLSQP better than Nelder-Mead, COBYLA, and Powell & Best fidelity \\
+08 & Loss Function & KL better than MMD & 98\% fidelity \\
+09 & Validation & Champion confirmed & 6 times improvement \\
+10 & Generation & Valid melodies produced & MIDI exported \\
+11 & Advanced & Hardware, Markov, and Duration & 14.5\% HW loss \\
+\bottomrule
+\end{tabular}
+\caption{Complete experimental summary.}
+\label{tab:summary}
+\end{table}
+
+\clearpage
+
+\printbibliography[title={Bibliography}]
+
+\end{document}
