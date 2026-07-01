@@ -274,38 +274,8 @@ Model tolerates up to **5% gate error** with graceful degradation
 
 ---
 
-##  Submission Package
-
-To create a clean archive for submission:
-
-```bash
-./prepare_submission.sh
-```
-
-This creates `quantum_music_jacopo_YYYYMMDD.tar.gz` with:
--  All source code (src/)
--  All notebooks with outputs (notebooks/)
--  All results (40+ figures, 10 MIDI files)
--  Complete documentation
--  No temporary files (.pyc, __pycache__, etc.)
--  No virtual environment (.venv/)
-
-**Archive size:** ~50-100 MB
-
----
-
-##  License
-
-This project is for academic purposes only (University of Trento - Quantum Machine Learning Course).
-
----
-
 ##  Acknowledgments
 
 - **IBM Quantum** for free access to real quantum hardware
 - **PennyLane** team for excellent quantum ML framework
 - **Super Mario Bros** (Nintendo) for the iconic melody dataset
-
----
-
-**For questions or issues, see [`SUBMISSION.md`](SUBMISSION.md) troubleshooting section.**
