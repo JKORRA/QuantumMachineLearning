@@ -2,9 +2,9 @@
 
 ## Abstract
 
-This thesis investigates whether **Quantum Machine Learning (QML)** can generate symbolic music (MIDI) better or differently than classical methods. Specifically, we test the hypothesis that **Quantum Entanglement** is a necessary physical resource for modeling complex, non-local musical correlations.
+This work explores whether **Quantum Machine Learning** can generate symbolic music (MIDI) in a way that differs from classical approaches. In particular, it examines if **Quantum Entanglement** is a fundamental physical resource for capturing complex, non-local musical correlations.
 
-We implement a **Quantum Circuit Born Machine (QCBM)** that uses the Born Rule to sample music directly from a quantum wavefunction, acting as a native probability distribution sampler.
+We implement a **Quantum CircuitBorn Machine (QCBM)** that leverages the Born Rule to sample music directly from a quantum wavefunction, functioning as a native probability distribution sampler.
 
 ---
 
